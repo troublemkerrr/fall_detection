@@ -4,6 +4,33 @@ from typing import List, Tuple, Dict, Any
 
 class DetectionUtils:
     @staticmethod
+    def calculate_iou(box1, box2):
+        """计算两个边界框的交并比 (IoU)"""
+        # 提取边界框坐标
+        x1_1, y1_1, x2_1, y2_1 = box1[:4]
+        x1_2, y1_2, x2_2, y2_2 = box2[:4]
+
+        # 计算交集区域的坐标
+        x1_inter = max(x1_1, x1_2)
+        y1_inter = max(y1_1, y1_2)
+        x2_inter = min(x2_1, x2_2)
+        y2_inter = min(y2_1, y2_2)
+
+        # 计算交集区域的面积
+        inter_area = max(0, x2_inter - x1_inter) * max(0, y2_inter - y1_inter)
+
+        # 计算两个边界框的面积
+        box1_area = (x2_1 - x1_1) * (y2_1 - y1_1)
+        box2_area = (x2_2 - x1_2) * (y2_2 - y1_2)
+
+        # 计算并集区域的面积
+        union_area = box1_area + box2_area - inter_area
+
+        # 计算交并比
+        iou = inter_area / union_area if union_area > 0 else 0
+        return iou
+    
+    @staticmethod
     def parse_yolo_output(outputs, original_shape, input_shape, confidence_threshold=0.1):
         """解析 YOLO 输出"""
         output = outputs[0][0]  # 获取第一个输出的第一个 batch
@@ -30,14 +57,27 @@ class DetectionUtils:
             if x1 >= x2 or y1 >= y2:
                 continue
 
-            detections.append((x1, y1, x2, y2, class_id, confidence * class_score))
+            detections.append((x1, y1, x2, y2, confidence * class_score))
         
         # 非极大值抑制 (NMS)
         filtered_detections = []
-        if len(detections) > 0:
+        # if len(detections) > 0:
+        #     best_box = detections[0]
+        #     filtered_detections.append(best_box)
+
+        # iou_threshold = 0.55
+        iou_threshold = 0.05
+        while len(detections) > 0:
+            # 按置信度排序
+            detections.sort(key=lambda x: x[4], reverse=True)
+            # 取出置信度最高的框
             best_box = detections[0]
             filtered_detections.append(best_box)
-        
+            # 移除已经选中的框
+            detections = detections[1:]
+            # 移除与当前框 IoU 大于阈值的框
+            detections = [box for box in detections if DetectionUtils.calculate_iou(best_box, box) < iou_threshold]
+
         return filtered_detections
 
     @staticmethod

@@ -8,6 +8,7 @@ from models import YOLOModel, MMPoseModel
 from detection_utils import DetectionUtils
 from visualization import Visualization
 from fall_detector import FallDetector
+from simple_tracker import SORTTracker
 
 class FallDetectionPipeline:
     def __init__(self, config):
@@ -15,6 +16,12 @@ class FallDetectionPipeline:
         self.yolo_model = YOLOModel(config.YOLO_MODEL_PATH)
         self.mmpose_model = MMPoseModel(config.MMPOSE_MODEL_PATH)
         self.fall_detector = FallDetector(config)
+        # self.tracker = SimpleTracker(
+        #     iou_threshold_range=(0.5, 0.7),
+        #     max_miss_frames=5
+        # )
+
+        self.tracker = SORTTracker()
     
     def process_video(self, video_path: str, output_folder: str) -> None:
         """处理视频文件"""
@@ -81,8 +88,8 @@ class FallDetectionPipeline:
         return writer
 
     def process_frame(self, frame: np.ndarray, frame_id: int) -> Tuple[np.ndarray, Dict[str, Any]]:
-        """处理单帧图像"""
-        original_shape = frame.shape[:2]  # 保存原始图像尺寸 (H, W)
+        """处理单帧图像（增加追踪功能）"""
+        original_shape = frame.shape[:2]
         frame_vis = frame.copy()
 
         # 运行YOLO检测
@@ -97,25 +104,31 @@ class FallDetectionPipeline:
         # 初始化结果结构
         result = {
             'frame_id': frame_id,
-            'bboxs': [],
-            'keypoints': [],
-            'is_falls': [],
-            'fall_flag': False,
-            'falling_flag': False
+            'tracks': {},
+            'keypoints': {},
+            'falls': {}
         }
 
         # 如果没有检测到人，直接返回
         if not detections:
             return frame_vis, result
 
-        # 处理每个检测到的人
-        for detection in detections:
-            x1, y1, x2, y2, _, score = detection
-            bbox = (x1, y1, x2, y2)
+        # 更新追踪器
+        tracked_objects = self.tracker.update([det[:5] for det in detections])
+
+        # 处理每个追踪到的人
+        for track_id, track_info in tracked_objects.items():
+            if track_info['is_predicted']:
+                continue
+            bbox = track_info['bbox']
             
             # 裁剪人体区域
-            cropped = frame[y1:y2, x1:x2]
+            x1, y1, x2, y2 = map(int, bbox)
+            cropped = frame[max(0,y1):min(y2,frame.shape[0]), max(0,x1):min(x2,frame.shape[1])]
             
+            if cropped.size == 0:
+                continue
+
             # 运行MMPose姿态估计
             heatmaps, original_shape_pose, resized_size, padding = self.mmpose_model.predict(cropped)
             refineOutput = DetectionUtils.parse_mmpose_output(heatmaps, bbox, padding, resized_size)
@@ -131,18 +144,33 @@ class FallDetectionPipeline:
             
             # 使用状态机检测摔倒
             fall_flag, falling_flag = self.fall_detector.detect_fall(bbox, is_fall, frame_id)
+            # is_fall, fall_flag, falling_flag = False, False, False
             
-            # 绘制检测框
-            Visualization.draw_detection(frame_vis, bbox, score, fall_flag, falling_flag)
+            # 绘制检测框和ID
+            color = self._get_track_color(track_id)
+            Visualization.draw_tracking_info(frame_vis, bbox, track_id, track_info['score'], 
+                                          fall_flag, falling_flag, color)
             
             # 保存结果
-            result['bboxs'].append(bbox)
-            result['keypoints'].append(serializable_output)
-            result['is_falls'].append(is_fall)
-            result['fall_flag'] = fall_flag
-            result['falling_flag'] = falling_flag
+            result['tracks'][track_id] = {
+                'bbox': bbox,
+                'score': track_info['score'],
+                'history': track_info.get('history', [])
+            }
+            result['keypoints'][track_id] = serializable_output
+            result['falls'][track_id] = {
+                'is_fall': is_fall,
+                'fall_flag': fall_flag,
+                'falling_flag': falling_flag
+            }
 
         return frame_vis, result
+    
+    def _get_track_color(self, track_id: int) -> Tuple[int, int, int]:
+        """根据track_id生成固定颜色"""
+        # 使用hash确保相同ID总是返回相同颜色
+        h = hash(str(track_id)) % 360
+        return Visualization.hsv_to_rgb(h, 1.0, 1.0)
 
     def _convert_keypoints_to_serializable(self, refineOutput: np.ndarray) -> List[Dict[str, float]]:
         """将关键点转换为可序列化的字典格式"""
@@ -155,6 +183,7 @@ class FallDetectionPipeline:
 def main():
     config = Config()
     video_path = "/Users/claire/fall_detection/test_data/50_ways_to_fall.mp4"
+    # video_path = "/Users/claire/fall_detection/test_data/demo.mp4"
     output_base = "/Users/claire/fall_detection/test_res"
     
     # 设置输出文件夹

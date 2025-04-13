@@ -2,7 +2,7 @@ import os
 
 class Config:
     # 模型路径
-    YOLO_MODEL_PATH = "/Users/claire/fall_detection/onnx_model/model.onnx"
+    YOLO_MODEL_PATH = "/Users/claire/fall_detection/onnx_model/best.onnx"
     MMPOSE_MODEL_PATH = "/Users/claire/fall_detection/onnx_model/td-hm-034c2b.onnx"
     
     # 视频处理参数
