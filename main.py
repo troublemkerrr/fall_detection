@@ -119,10 +119,9 @@ class FallDetectionPipeline:
         # 处理每个追踪到的人
         for track_id, track_info in tracked_objects.items():
             if track_info['is_predicted']:
-                continue
-            bbox = track_info['bbox']
+                continue  # 跳过预测框
             
-            # 裁剪人体区域
+            bbox = track_info['bbox']
             x1, y1, x2, y2 = map(int, bbox)
             cropped = frame[max(0,y1):min(y2,frame.shape[0]), max(0,x1):min(x2,frame.shape[1])]
             
@@ -142,14 +141,13 @@ class FallDetectionPipeline:
             # 检查摔倒状态
             is_fall = DetectionUtils.check_fall_status(serializable_output, bbox)
             
-            # 使用状态机检测摔倒
-            fall_flag, falling_flag = self.fall_detector.detect_fall(bbox, is_fall, frame_id)
-            # is_fall, fall_flag, falling_flag = False, False, False
+            # 使用状态机检测摔倒（传入track_id）
+            fall_flag, falling_flag = self.fall_detector.detect_fall(track_id, bbox, is_fall, frame_id)
             
             # 绘制检测框和ID
             color = self._get_track_color(track_id)
             Visualization.draw_tracking_info(frame_vis, bbox, track_id, track_info['score'], 
-                                          fall_flag, falling_flag, color)
+                                        fall_flag, falling_flag, color)
             
             # 保存结果
             result['tracks'][track_id] = {
@@ -182,8 +180,8 @@ class FallDetectionPipeline:
 
 def main():
     config = Config()
-    video_path = "/Users/claire/fall_detection/test_data/50_ways_to_fall.mp4"
-    # video_path = "/Users/claire/fall_detection/test_data/demo.mp4"
+    # video_path = "/Users/claire/fall_detection/test_data/50_ways_to_fall.mp4"
+    video_path = "/Users/claire/fall_detection/datasets/Multicam/dataset/dataset/chute17/cam3.avi"
     output_base = "/Users/claire/fall_detection/test_res"
     
     # 设置输出文件夹
