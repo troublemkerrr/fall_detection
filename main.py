@@ -17,7 +17,7 @@ import uuid
 import tempfile
 from pipline import FallDetectionPipeline
 from database import FallDetectionDB
-from fall.miniodb import VideoStorage
+from miniodb import VideoStorage
 from config import Config
 from collections import deque
 
