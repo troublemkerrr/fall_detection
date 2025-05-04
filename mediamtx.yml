@@ -1,0 +1,14 @@
+logLevel: info
+
+# 设置更长的超时时间（单位：秒）
+readTimeout: 1000s
+writeTimeout: 1000s
+readBufferCount: 512
+
+# 关闭 on-demand 模式，表示一直开放推流
+paths:
+  fall_stream:
+    source: publisher       # 明确表示这个路径由外部 ffmpeg 等主动推流
+    runOnDemand: "no"       # 不要按需启动（默认也是 no）
+    sourceOnDemand: false   # 不要按需拉流
+    record: false           # 不做录像（可选）
